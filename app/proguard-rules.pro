@@ -44,3 +44,6 @@
 # Ignore missing okhttp3 classes since OkHttp is not included as a dependency.
 -dontwarn okhttp3.**
 
+
+# Tesseract JNI wrapper
+-keep class com.googlecode.tesseract.android.** { *; }

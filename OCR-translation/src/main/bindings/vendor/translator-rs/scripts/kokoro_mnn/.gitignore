@@ -1,7 +1,0 @@
-*.onnx
-*.wav
-*.mnn
-*.json
-*.txt
-*.weight
-__pycache__

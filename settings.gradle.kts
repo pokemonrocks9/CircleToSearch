@@ -38,10 +38,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") }
+        maven {
+            url = uri("https://jitpack.io")
+            content { includeGroupByRegex("cz\\.adaptech.*") }
+        }
     }
 }
 
 rootProject.name = "CircleToSearch"
 include(":app")
-include(":OCR-translation")

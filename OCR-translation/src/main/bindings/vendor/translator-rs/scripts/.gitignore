@@ -1,6 +1,0 @@
-*.mnn
-*.onnx
-*.onnx.data
-*/gen_out/*
-opus-trainer/api_test/*
-opus-trainer/uig_ft_src.11k.txt

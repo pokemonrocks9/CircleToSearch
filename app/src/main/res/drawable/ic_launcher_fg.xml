@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original mark: a bold lens ring with a selected dot. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,54 m-23,0 a23,23 0 1,0 46,0 a23,23 0 1,0 -46,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8" />
+    <path
+        android:pathData="M54,54 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:fillColor="#7AA7FF" />
+</vector>

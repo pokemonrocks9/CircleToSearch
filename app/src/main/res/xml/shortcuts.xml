@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="settings"
+        android:enabled="true"
+        android:icon="@drawable/bar_icon"
+        android:shortcutShortLabel="@string/shortcut_settings">
+        <intent
+            android:action="com.akslabs.circletosearch.SETTINGS"
+            android:targetPackage="com.akslabs.circletosearch"
+            android:targetClass="com.akslabs.circletosearch.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -149,6 +149,39 @@ object QrScanner {
         return results
     }
 
+    /**
+     * Fast check for a circled crop: one downscaled pass (2-3 decodes) instead of the 14-tile
+     * full-screen sweep. Most circles contain no QR code, so the miss path has to be quick.
+     */
+    fun scanCrop(bitmap: Bitmap): QrResultWithBounds? {
+        return try {
+            val longest = maxOf(bitmap.width, bitmap.height)
+            val src = if (longest > 800) {
+                val f = 800f / longest
+                Bitmap.createScaledBitmap(
+                    bitmap, (bitmap.width * f).toInt().coerceAtLeast(1), (bitmap.height * f).toInt().coerceAtLeast(1), true
+                )
+            } else bitmap
+            val w = src.width
+            val h = src.height
+            val pixels = IntArray(w * h)
+            src.getPixels(pixels, 0, w, 0, 0, w, h)
+            val lum = RGBLuminanceSource(w, h, pixels)
+            val reader = MultiFormatReader()
+            fun attempt(b: com.google.zxing.Binarizer): com.google.zxing.Result? = try {
+                reader.decode(BinaryBitmap(b), HINTS)
+            } catch (e: Exception) {
+                null
+            }
+            val r = attempt(HybridBinarizer(lum))
+                ?: attempt(com.google.zxing.common.GlobalHistogramBinarizer(lum))
+                ?: attempt(HybridBinarizer(lum.invert()))
+            r?.let { QrResultWithBounds(parseResult(it.text), it.text, null) }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** Compatibility single-result scan (kept for backward compat). */
     fun scanBitmap(bitmap: Bitmap): QrResult? = scanBitmapAll(bitmap).firstOrNull()?.result
 

@@ -57,8 +57,8 @@ android {
         applicationId = "com.akslabs.circletosearch"
         minSdk = 29
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.5"
+        versionCode = 8
+        versionName = "1.0-lean"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -75,9 +75,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // No release keystore on this machine: sign with the debug key so the optimized build still installs
+            // (and replaces a debug install, which uses the same key).
             signingConfig = signingConfigs
                 .getByName("release")
                 .takeIf { it.storeFile?.exists() == true }
+                ?: signingConfigs.getByName("debug")
         }
         
         getByName("debug") {
@@ -148,7 +151,6 @@ androidComponents {
 }
 
 dependencies {
-    implementation(project(":OCR-translation"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -164,9 +166,12 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.webkit:webkit:1.9.0")
-    implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.google.zxing:core:3.5.4")
+    // Translate: on-device text recognition (ML Kit bundled models, no Play Services) or Tesseract
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.8.0")
 }

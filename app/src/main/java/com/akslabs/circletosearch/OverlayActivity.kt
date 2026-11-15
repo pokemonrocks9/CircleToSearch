@@ -1,148 +1,118 @@
-/*
- *
- *  * Copyright (C) 2025 AKS-Labs (original author)
- *  *
- *  * This program is free software: you can redistribute it and/or modify
- *  * it under the terms of the GNU General Public License as published by
- *  * the Free Software Foundation, either version 3 of the License, or
- *  * (at your option) any later version.
- *  *
- *  * This program is distributed in the hope that it will be useful,
- *  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  * GNU General Public License for more details.
- *  *
- *  * You should have received a copy of the GNU General Public License
- *  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
- */
-
 package com.akslabs.circletosearch
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.akslabs.circletosearch.data.BitmapRepository
-import com.akslabs.circletosearch.ui.CircleToSearchScreen
+import com.akslabs.circletosearch.ui.SearchOverlay
 import com.akslabs.circletosearch.ui.theme.CircleToSearchTheme
 
+/**
+ * Full-screen frozen screenshot with the circle gesture and the search bar. Singleton task:
+ * [onNewIntent] swaps in the new capture and bumps [generation] so every piece of UI state
+ * (selection, typed text, QR card) is rebuilt from scratch.
+ */
 class OverlayActivity : ComponentActivity() {
-    
-    private val screenshotBitmap = androidx.compose.runtime.mutableStateOf<android.graphics.Bitmap?>(null)
-    private val searchModeOverride = androidx.compose.runtime.mutableStateOf<Boolean?>(null)
-    private var translateBridge: AssistantTranslateOverlayBridge? = null
+
+    private var shot by mutableStateOf<Bitmap?>(null)
+    private var generation by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        android.util.Log.d("CircleToSearch", "OverlayActivity onCreate")
-        
-        // Allow chrome://inspect attachment for diagnosing engine tabs (debug builds only)
-        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-            android.webkit.WebView.setWebContentsDebuggingEnabled(true)
+        // The window is translucent, so a recents thumbnail of it would show the home screen through it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
         }
-
-        // Fresh cookie jar each session (Incognito-equivalent): Google cookies
-        // accumulated across challenged/failed sessions may be trust-flagged,
-        // which breaks Lens ("image not associated with your account") while a
-        // clean Incognito profile loads the same URL fine.
-        try {
-            val cm = android.webkit.CookieManager.getInstance()
-            cm.removeAllCookies { cm.flush() }
-            cm.flush()
-            android.util.Log.d("LensDiag", "COOKIES_CLEARED")
-        } catch (e: Exception) {
-            android.util.Log.e("LensDiag", "cookie clear failed: $e")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
         }
-        
-        // Ensure the activity can receive touches and focus properly
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
-        
-        com.akslabs.circletosearch.AssistSessionService.registerOverlayActivity(this)
-
-        loadScreenshot()
-        updateOverride(intent)
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+        }
+        if (!load()) return
 
         setContent {
             CircleToSearchTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.Transparent,
-                    tonalElevation = 0.dp
-                ) {
-                    CircleToSearchScreen(
-                        capturedScreenshot = screenshotBitmap.value,
-                        searchModeOverride = searchModeOverride.value,
-                        onClose = { 
-                            BitmapRepository.clear()
-                            finish() 
-                        }
-                    )
+                val b = shot
+                if (b != null) {
+                    key(generation) { SearchOverlay(bitmap = b, onClose = { finish() }) }
                 }
             }
         }
-
-        // Activity-hosted translate overlay: reuses the exact same OverlayUI chrome the
-        // accessibility path uses, hosted in this activity's window (no a11y permission
-        // needed for the OCR/translation — only the window type differed).
-        // NOTE: must be created AFTER setContent — setContent installs the ComposeView
-        // via setContentView, which removes any previously added content views (including
-        // the bridge's container), detaching the translate chrome from the window.
-        translateBridge = AssistantTranslateOverlayBridge(this).also { it.start() }
-        AssistantTranslateOverlay.attach(translateBridge!!)
     }
 
+    /** The overlay animates itself out in Compose; the system must not add its own "app closing" animation. */
+    override fun finish() {
+        super.finish()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
+    }
 
-    override fun onNewIntent(intent: android.content.Intent) {
+    /** Leaving the screen (lock, home, app switch, opening a link) ends the session; never resume a stale capture. */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            Log.d(TAG, "Stopped, closing overlay")
+            finishAndRemoveTask()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        android.util.Log.d("CircleToSearch", "OverlayActivity onNewIntent - Resetting state")
         setIntent(intent)
-        
-        // IMMEDIATE NULLING to prevent flash of previous screen
-        screenshotBitmap.value = null
-        searchModeOverride.value = null
-        
-        loadScreenshot()
-        updateOverride(intent)
+        shot = null // never flash the previous page
+        load()
     }
 
-    private fun updateOverride(intent: android.content.Intent) {
-        if (intent.hasExtra("EXTRA_SEARCH_MODE_OVERRIDE")) {
-            searchModeOverride.value = intent.getBooleanExtra("EXTRA_SEARCH_MODE_OVERRIDE", false)
-        } else {
-            searchModeOverride.value = null
+    /** Takes the pending screenshot; if there is none, says so and closes. */
+    private fun load(): Boolean {
+        val b = BitmapRepository.take()
+        if (b == null) {
+            Log.e(TAG, "No screenshot in repository")
+            Toast.makeText(this, R.string.toast_no_screenshot, Toast.LENGTH_LONG).show()
+            finish()
+            return false
         }
+        Log.d(TAG, "Screenshot ${b.width}x${b.height}")
+        shot = b
+        generation++
+        return true
     }
 
-    private fun loadScreenshot() {
-        val bitmap = BitmapRepository.getScreenshot()
-        if (bitmap != null) {
-            android.util.Log.d("CircleToSearch", "Bitmap loaded from Repository. Size: ${bitmap.width}x${bitmap.height}")
-            screenshotBitmap.value = bitmap
-        } else {
-            android.util.Log.e("CircleToSearch", "No bitmap in Repository")
-        }
-    }
-    
-    override fun onDestroy() {
-        super.onDestroy()
-        translateBridge?.let {
-            AssistantTranslateOverlay.detach(it)
-            it.destroy()
-        }
-        translateBridge = null
-        if (isFinishing) {
-             com.akslabs.circletosearch.data.BitmapRepository.clear()
-             com.akslabs.circletosearch.utils.StorageUtils.clearAppCache(this)
+    companion object {
+        private const val TAG = "CTS.Overlay"
+
+        fun launch(context: Context) {
+            context.startActivity(
+                Intent(context, OverlayActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            )
         }
     }
 }
